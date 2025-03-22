@@ -1,5 +1,7 @@
 venv/
 app_mappings.json
+__pycache__/
+Data/
 
 #Secret 
 .env
