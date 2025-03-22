@@ -1,0 +1,15 @@
+{
+    "mail": "mail:",
+    "outlook": "ms-outlook:",
+    "file explorer": "explorer",
+    "chrome": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+    "edge": "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+    "notepad": "notepad",
+    "paint": "mspaint",
+    "settings": "ms-settings:",
+    "control panel": "control.exe",
+    "microsoft store": "ms-windows-store:",
+    "virtual studio code": "C:\\Users\\drdoi\\AppData\\Local\\Programs\\Microsoft VS Code\\Code.exe",
+    "snipping tool": "C:\\Windows\\System32\\SnippingTool.exe",
+    "calculator": "calc.exe"
+}
