@@ -9,8 +9,7 @@ import re  # For regex-based splitting
 
 # Load environment variables
 env_vars = dotenv_values(".env")
-CohereAPIKey = env_vars.get("CohereAPIKey") or os.getenv(
-    "CohereAPIKey")  # Fallback if needed
+CohereAPIKey = env_vars.get("CohereAPIKey") or os.getenv("CohereAPIKey")  # Fallback if needed
 
 # Handle missing API key
 if not CohereAPIKey:
