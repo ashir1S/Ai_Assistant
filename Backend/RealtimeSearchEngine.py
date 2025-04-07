@@ -1,5 +1,5 @@
 # RealtimeSearchEngine.py
-from googlesearch import search
+from serpapi import GoogleSearch  # Imported SerpAPI's GoogleSearch class
 from groq import Groq  # Importing the Groq library to use its API.
 from json import load, dump  # Functions to read and write JSON files.
 import datetime  # For real-time date and time information.
@@ -28,14 +28,32 @@ except Exception as e:
         dump([], f)
     messages = []
 
-# Function to perform a Google search and format the results.
-def GoogleSearch(query):
-    results = list(search(query, advanced=True, num_results=5))
+def truncate_text(text, max_length=1000):
+    """Truncate text to the maximum length specified."""
+    if len(text) > max_length:
+        return text[:max_length] + "..."
+    return text
+
+# Function to perform a Google search and format the results using SerpAPI.
+def PerformGoogleSearch(query):
+    search = GoogleSearch({
+        "q": query,
+        "api_key": env_vars.get("SerpAPIKey"),
+        "num": 5
+    })
+    response = search.get_dict()  # Get the full response as a dictionary.
+    results = response.get("organic_results", [])
+
     Answer = f"The search results for '{query}' are:\n[start]\n"
-    for i in results:
-        Answer += f"Title: {i.title}\nDescription: {i.description}\n\n"
+    for result in results:
+        title = result.get("title", "No Title")
+        snippet = result.get("snippet", "No Description")
+        # Optionally truncate each snippet if too long.
+        snippet = truncate_text(snippet, 150)
+        Answer += f"Title: {title}\nDescription: {snippet}\n\n"
     Answer += "[end]"
-    return Answer
+    # Also truncate the overall answer if needed.
+    return truncate_text(Answer, 1000)
 
 # Function to clean up the answer by removing empty lines.
 def AnswerModifier(answer):
@@ -81,14 +99,20 @@ def RealtimeSearchEngine(prompt):
 
     # Append the user prompt to the messages.
     messages.append({"role": "user", "content": prompt})
+    
+    # Limit the context to the last 5 messages.
+    recent_messages = messages[-5:]
 
-    # Add Google search results to the system chatbot messages.
-    SystemChatBot.append({"role": "system", "content": GoogleSearch(prompt)})
+    # Add Google search results (from SerpAPI) to the system chatbot messages.
+    SystemChatBot.append({"role": "system", "content": PerformGoogleSearch(prompt)})
+
+    # Compose the full conversation with trimmed context.
+    full_conversation = SystemChatBot + [{"role": "system", "content": Information()}] + recent_messages
 
     # Generate a response using the Groq client.
     completion = client.chat.completions.create(
         model="llama3-70b-8192",
-        messages=SystemChatBot + [{"role": "system", "content": Information()}] + messages,
+        messages=full_conversation,
         temperature=0.7,
         max_tokens=2048,
         top_p=1,
@@ -109,7 +133,7 @@ def RealtimeSearchEngine(prompt):
     with open(r"Data\ChatLog.json", "w") as f:
         dump(messages, f, indent=4)
 
-    # Remove the most recent system message (the Google search result) from the conversation.
+    # Remove the most recent system message (the search result) from the conversation.
     SystemChatBot.pop()
 
     return AnswerModifier(Answer)
