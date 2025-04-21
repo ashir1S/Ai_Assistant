@@ -2,7 +2,7 @@
 
 AI Assistant is a versatile virtual assistant designed with both command-line (CLI) and graphical user interfaces (GUI). It aims to provide intelligent assistance across various tasks, leveraging multiple powerful AI APIs. This assistant can handle general queries, fetch real-time information, generate images, process voice commands, and automate basic desktop operations.
 
-🔗 **GitHub Repository:** [https://github.com/ashir1S/Ai_Assistant](https://github.com/ashir1S/Ai_Assistant)
+🔗 **GitHub Repository:** [https://github.com/ashir1S/Ai_Assistant](Ai_Assistant)
 
 ## 🚀 Features
 
