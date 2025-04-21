@@ -6,6 +6,8 @@ Data/
 #Secret 
 .env
 
+Frontend/Files/*
+
 # Ignore Edge WebDriver and related files
 /Webdriver/
 
