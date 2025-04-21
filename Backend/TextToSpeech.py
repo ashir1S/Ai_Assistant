@@ -12,9 +12,25 @@ from dotenv import dotenv_values
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 # ─── PATH SETUP ────────────────────────────────────────────────────────────────
-DATA_DIR = Path("Data")
+
+# Get the absolute path to the project root (one level above the current file)
+ROOT_DIR = Path(__file__).resolve().parent.parent
+
+# Now define the data directory and ensure it exists
+DATA_DIR = ROOT_DIR / "Data"
 DATA_DIR.mkdir(exist_ok=True)
+
+# Define the audio file path
+# Get the absolute path to the project root (one level above the current file)
+ROOT_DIR = Path(__file__).resolve().parent.parent
+
+# Now define the data directory and ensure it exists
+DATA_DIR = ROOT_DIR / "Data"
+DATA_DIR.mkdir(exist_ok=True)
+
+# Define the audio file path
 AUDIO_FILE = DATA_DIR / "speech.mp3"
+
 
 # ─── VOICE SETUP ──────────────────────────────────────────────────────────────
 # Use a known valid voice to avoid type errors

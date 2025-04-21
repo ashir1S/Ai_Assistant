@@ -1,11 +1,21 @@
-from groq import Groq  # Import the Groq library to use its API.
+from groq import Groq
+import os
+from dotenv import load_dotenv
+
+load_dotenv()  # Load environment variables from .env file
+
+GroqAPIKey = os.environ.get("GroqAPIKey")
+
+client = Groq(api_key=GroqAPIKey) if GroqAPIKey else None# Import the Groq library to use its API.
+if client is None:
+    print("Error: GROQ_API_KEY not found in environment variables.")
 from json import load, dump  # Functions to read and write JSON files.
 import datetime  # For real-time date and time info.
 # To read environment variables from a .env file.
 from dotenv import dotenv_values
 import subprocess  # To execute system commands.
 import re  # For regex-based splitting.
-from Model import FirstLayerDMM  # Import classification logic from model.py.
+from .Model import FirstLayerDMM  # Import classification logic from model.py.
 import os  # For os.startfile()
 import json  # For loading app mappings.
 from fuzzywuzzy import process  # For fuzzy matching
@@ -17,13 +27,17 @@ CREATE_NO_WINDOW = 0x08000000
 env_vars = dotenv_values(".env")
 Username = env_vars.get("Username")
 Assistantname = env_vars.get("Assistantname")
-GroqAPIKey = env_vars.get("GroqAPIKey")
+# GroqAPIKey = env_vars.get("GroqAPIKey")
 
 # Initialize the Groq client using the provided API key.
-client = Groq(api_key=GroqAPIKey)
+# client = Groq(api_key=GroqAPIKey)
 
 # Global path for the chat log file.
-CHAT_LOG_FILE = r"Data\ChatLog.json"
+CHAT_LOG_FILE = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "..", "Data", "ChatLog.json"
+)
+CHAT_LOG_FILE = os.path.abspath(CHAT_LOG_FILE)
+
 
 # Function to load app mappings from the project root.
 
