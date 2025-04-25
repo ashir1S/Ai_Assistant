@@ -3,37 +3,21 @@ import random
 import asyncio
 from pathlib import Path
 from typing import Callable
-
 import pygame
 import edge_tts
+import keyboard  # <- ADDED
 from dotenv import dotenv_values
 
 # ─── CONFIG & LOGGING ─────────────────────────────────────────────────────────
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 # ─── PATH SETUP ────────────────────────────────────────────────────────────────
-
-# Get the absolute path to the project root (one level above the current file)
 ROOT_DIR = Path(__file__).resolve().parent.parent
-
-# Now define the data directory and ensure it exists
 DATA_DIR = ROOT_DIR / "Data"
 DATA_DIR.mkdir(exist_ok=True)
-
-# Define the audio file path
-# Get the absolute path to the project root (one level above the current file)
-ROOT_DIR = Path(__file__).resolve().parent.parent
-
-# Now define the data directory and ensure it exists
-DATA_DIR = ROOT_DIR / "Data"
-DATA_DIR.mkdir(exist_ok=True)
-
-# Define the audio file path
 AUDIO_FILE = DATA_DIR / "speech.mp3"
 
-
 # ─── VOICE SETUP ──────────────────────────────────────────────────────────────
-# Use a known valid voice to avoid type errors
 DEFAULT_VOICE = "en-US-JennyNeural"
 logging.info(f"Using TTS voice: {DEFAULT_VOICE}")
 
@@ -62,16 +46,12 @@ RESPONSES = [
 ]
 
 # ─── CORE FUNCTIONS ────────────────────────────────────────────────────────────
+
 async def text_to_audio_file(text: str) -> bool:
-    """
-    Generates an MP3 file from text using edge_tts.
-    Returns True on success, False on error.
-    """
     try:
         if AUDIO_FILE.exists():
             AUDIO_FILE.unlink()
         logging.info(f"Generating TTS audio (sample): {text[:20]!r}")
-        # Minimal call: only text and voice
         communicator = edge_tts.Communicate(text=text, voice=DEFAULT_VOICE)
         await communicator.save(str(AUDIO_FILE))
         return True
@@ -81,10 +61,6 @@ async def text_to_audio_file(text: str) -> bool:
 
 
 def tts(text: str, callback: Callable[[bool], bool] = lambda _: True) -> bool:
-    """
-    Plays speech audio for given text. Calls callback(False) at end.
-    Returns True if played successfully, False on error.
-    """
     if not asyncio.run(text_to_audio_file(text)):
         return False
 
@@ -93,12 +69,22 @@ def tts(text: str, callback: Callable[[bool], bool] = lambda _: True) -> bool:
         pygame.mixer.music.load(str(AUDIO_FILE))
         pygame.mixer.music.play()
 
-        while pygame.mixer.music.get_busy() and callback(True):
+        while pygame.mixer.music.get_busy():
+            if keyboard.is_pressed("s"):  # PRESS 's' TO STOP
+                logging.info("Speech interrupted by user (pressed 's')")
+                pygame.mixer.music.stop()
+                break
+            if not callback(True):
+                pygame.mixer.music.stop()
+                break
             pygame.time.Clock().tick(10)
+
         return True
+
     except Exception:
         logging.exception("Playback failed.")
         return False
+
     finally:
         try:
             callback(False)
@@ -110,20 +96,29 @@ def tts(text: str, callback: Callable[[bool], bool] = lambda _: True) -> bool:
 
 def text_to_speech(text: str, callback: Callable[[bool], bool] = lambda _: True) -> None:
     """
-    Splits long text; if very long, reads first two sentences + prompt, otherwise reads all.
+    If the user says "in detail" or "complete", read all.
+    Otherwise, give short summary + ending prompt.
     """
-    sentences = [s for s in text.split('.') if s]
-    if len(sentences) > 4 and len(text) >= 250:
-        snippet = '. '.join(sentences[:2]).strip()
-        snippet += '. ' + random.choice(RESPONSES)
-        tts(snippet, callback)
-    else:
+    lowered = text.lower()
+    sentences = [s.strip() for s in text.split('.') if s.strip()]
+    detailed_trigger = any(kw in lowered for kw in ["in detail", "complete", "fully", "elaborate"])
+
+    if detailed_trigger or (len(sentences) <= 3 or len(text) < 250):
         tts(text, callback)
+    else:
+        snippet = '. '.join(sentences[:2]) + '. ' + random.choice(RESPONSES)
+        tts(snippet, callback)
+        
+    # def text_to_speech(text: str, callback: Callable[[bool], bool] = lambda _: True) -> None: // for full text
+    # """
+    # Reads the full text aloud until user presses 's' to stop.
+    # """
+    # tts(text, callback)
+    
 
 
 # ─── MODULE TEST ───────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     while True:
-        user_input = input("Enter the text: ")
+        user_input = input("Enter text: ")
         text_to_speech(user_input)
-        
