@@ -43,18 +43,18 @@ async def fetch_image(session: aiohttp.ClientSession, payload: dict, timeout: in
 
 async def generate_images(prompt: str) -> list[Path]:
     """
-    Generate 4 images for the given prompt and save them to disk.
-    Returns a list of Paths to the saved images.
+    Generate 1 image for the given prompt and save it to disk.
+    Returns a list containing the Path to the saved image.
     """
     prompt_slug = prompt.replace(" ", "_")
     tasks = []
     async with aiohttp.ClientSession() as session:
-        for _ in range(4):
-            seed = randint(0, 1_000_000)
-            payload = {
-                "inputs": f"{prompt}, quality=4K, sharpness=maximum, Ultra High details, high resolution, seed={seed}"  # noqa: E501
-            }
-            tasks.append(fetch_image(session, payload))
+        # Only one image
+        seed = randint(0, 1_000_000)
+        payload = {
+            "inputs": f"{prompt}, quality=4K, sharpness=maximum, Ultra High details, high resolution, seed={seed}"
+        }
+        tasks.append(fetch_image(session, payload))
         results = await asyncio.gather(*tasks)
 
     saved_paths = []
@@ -65,7 +65,7 @@ async def generate_images(prompt: str) -> list[Path]:
             saved_paths.append(file_path)
             logger.info("Saved image: %s", file_path)
         else:
-            logger.warning("Image %d for prompt '%s' failed to generate.", idx, prompt)
+            logger.warning("Image for prompt '%s' failed to generate.", prompt)
     return saved_paths
 
 async def open_images(image_paths: list[Path]) -> None:
