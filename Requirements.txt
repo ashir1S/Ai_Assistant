@@ -17,3 +17,4 @@ PyQt5
 webdriver-manager
 fuzzywuzzy
 Levenshtein
+pyinstaller

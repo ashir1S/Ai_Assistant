@@ -1,15 +1,23 @@
 import os
+import sys
 import cohere
 import traceback
 from rich import print
-from dotenv import dotenv_values
+from dotenv import load_dotenv
 from fuzzywuzzy import process
 import Levenshtein  # For better string matching
 import re  # For regex-based splitting
 
+# --- Helper for PyInstaller path resolution ---
+def resource_path(relative_path):
+    """Get absolute path to resource, works for dev and PyInstaller."""
+    if hasattr(sys, '_MEIPASS'):
+        return os.path.join(sys._MEIPASS, relative_path)
+    return os.path.abspath(relative_path)
+
 # Load environment variables
-env_vars = dotenv_values(".env")
-CohereAPIKey = env_vars.get("CohereAPIKey") or os.getenv("CohereAPIKey")
+load_dotenv(dotenv_path=resource_path('.env'))
+CohereAPIKey = os.getenv("CohereAPIKey")
 
 if not CohereAPIKey:
     print("[bold red]Error: Cohere API key not found. Please set it in the .env file.[/bold red]")
@@ -38,7 +46,7 @@ PREAMBLE = """
 You are a highly accurate Decision-Making Model that categorizes user queries.
 Your task is to classify queries into specific categories based on their nature.  
 
-*** Do NOT answer queries—only categorize them. ***  
+*** Do NOT answer queries-only categorize them. ***  
 
 ### **Classification Rules:**  
 
@@ -155,8 +163,8 @@ def handle_classified_output(response):
 # User loop
 if __name__ == "__main__":
     while True:
-        user_input = input(">>> ").strip().lower()
-        if user_input in ["exit", "quit", "bye"]:
+        user_input = input(">>> ").strip()
+        if user_input.lower() in ["exit", "quit", "bye"]:
             print("[bold green]Goodbye![/bold green] 👋")
             break
 

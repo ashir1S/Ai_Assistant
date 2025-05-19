@@ -1,148 +1,192 @@
 # RealtimeSearchEngine.py
-from serpapi import GoogleSearch  # Imported SerpAPI's GoogleSearch class
-from groq import Groq  # Importing the Groq library to use its API.
-from json import load, dump  # Functions to read and write JSON files.
-import datetime  # For real-time date and time information.
-from dotenv import dotenv_values  # To read environment variables from a .env file
+import os
+import sys
+from serpapi import GoogleSearch
+from groq import Groq
+from json import load, dump
+import datetime
+from dotenv import load_dotenv
 
-# Load environment variables from the .env file.
-env_vars = dotenv_values(".env")
-Username = env_vars.get("Username")
-Assistantname = env_vars.get("Assistantname")
-GroqAPIKey = env_vars.get("GroqAPIKey")
+def resource_path(relative_path):
+    """Get absolute path to resource, works for dev and for PyInstaller"""
+    if hasattr(sys, '_MEIPASS'):
+        return os.path.join(sys._MEIPASS, relative_path)
+    return os.path.abspath(relative_path)
 
-# Initialize the Groq client with the provided API key.
+# Load environment variables correctly
+load_dotenv(dotenv_path=resource_path('.env'))
+
+# Get environment variables using os.getenv()
+Username = os.getenv("Username", "User") # Added default value
+Assistantname = os.getenv("Assistantname", "Assistant") # Added default value
+GroqAPIKey = os.getenv("GroqAPIKey")
+SerpAPIKey = os.getenv("SerpAPIKey")
+
+# Initialize Groq client with proper error handling
+if not GroqAPIKey:
+    raise ValueError("Groq API key not found in environment variables")
+
 client = Groq(api_key=GroqAPIKey)
 
-# Define the system instructions for the chatbot.
-System = f"""Hello, I am {Username}, You are a very accurate and advanced AI chatbot named {Assistantname} which has real-time up-to-date information from the internet.
-*** Provide Answers In a Professional Way, make sure to add full stops, commas, question marks, and use proper grammar.***
-*** Just answer the question from the provided data in a professional way. ***"""
+# --- Step 1: Strengthen the System Prompt ---
+System = f"""Hello, I am {Username}. You are a very accurate and advanced AI chatbot named {Assistantname} which has real-time up-to-date information from the internet.
+*** Always answer ONLY using the provided search results below. If the answer is not found in the results, respond: 'I could not find the answer in the latest search results.' ***
+*** Provide answers in a professional way, with proper grammar and punctuation. ***
+"""
 
-# Try to load the chat log from a JSON file; if not available, create an empty one.
+# Chat log handling with proper path resolution
+chatlog_path = resource_path(os.path.join("Data", "ChatLog.json"))
+data_dir = os.path.dirname(chatlog_path)
+os.makedirs(data_dir, exist_ok=True)
+
+# Load chat log, initialize if not found
 try:
-    with open(r"Data\ChatLog.json", "r") as f:
-        messages = load(f)
-except Exception as e:
-    with open(r"Data\ChatLog.json", "w") as f:
+    with open(chatlog_path, "r") as f:
+        messages_log = load(f) # Renamed to avoid conflict with messages variable in completion call
+except FileNotFoundError:
+    with open(chatlog_path, "w") as f:
         dump([], f)
-    messages = []
+    messages_log = []
 
 def truncate_text(text, max_length=1000):
-    """Truncate text to the maximum length specified."""
-    if len(text) > max_length:
-        return text[:max_length] + "..."
-    return text
+    """Truncate text to specified max length"""
+    return text[:max_length] + "..." if len(text) > max_length else text
 
-# Function to perform a Google search and format the results using SerpAPI.
 def PerformGoogleSearch(query):
-    search = GoogleSearch({
-        "q": query,
-        "api_key": env_vars.get("SerpAPIKey"),
-        "num": 5
-    })
-    response = search.get_dict()  # Get the full response as a dictionary.
-    results = response.get("organic_results", [])
+    if not SerpAPIKey:
+        # Return an indicator of the missing key instead of raising an error immediately
+        # Allows the main function to handle it gracefully if needed
+        return "Error: SerpAPI key not found."
 
-    Answer = f"The search results for '{query}' are:\n[start]\n"
-    for result in results:
-        title = result.get("title", "No Title")
-        snippet = result.get("snippet", "No Description")
-        # Optionally truncate each snippet if too long.
-        snippet = truncate_text(snippet, 150)
-        Answer += f"Title: {title}\nDescription: {snippet}\n\n"
-    Answer += "[end]"
-    # Also truncate the overall answer if needed.
-    return truncate_text(Answer, 1000)
+    try:
+        search = GoogleSearch({
+            "q": query,
+            "api_key": SerpAPIKey,
+            "num": 5 # Limit to 5 results
+        })
+        results = search.get_dict().get("organic_results", [])
 
-# Function to clean up the answer by removing empty lines.
+        if not results:
+             # Indicate no results found
+            return "No results found."
+
+        answer = f"The search results for '{query}' are:\n[start]\n"
+        found_content = False
+        for result in results:
+            title = result.get("title", "No Title")
+            snippet = result.get("snippet", "No Description")
+            # Only include if there's a title or a meaningful snippet
+            if title != "No Title" or snippet != "No Description":
+                answer += f"Title: {title}\nDescription: {truncate_text(snippet, 150)}\n\n"
+                found_content = True
+
+        if not found_content:
+             # Indicate results were present but lacked usable titles/snippets
+             return "No relevant information found in search results."
+
+        answer += "[end]"
+        return truncate_text(answer, 1000) # Truncate the final result string if needed
+
+    except Exception as e:
+        # Catch potential API errors or other issues
+        print(f"Error during Google Search: {e}")
+        return f"Error performing search: {e}"
+
+
 def AnswerModifier(answer):
-    lines = answer.split('\n')
-    non_empty_lines = [line for line in lines if line.strip()]
-    modified_answer = '\n'.join(non_empty_lines)
-    return modified_answer
+    # Simple modifier, removes extra newlines
+    return '\n'.join([line for line in answer.split('\n') if line.strip()])
 
-# Predefined chatbot conversation system message and an initial conversation.
-SystemChatBot = [
-    {"role": "system", "content": System},
-    {"role": "user", "content": "Hi"},
-    {"role": "assistant", "content": "Hello, how can I help you?"}
-]
+# Removed SystemChatBot as per Step 3
 
-# Function to get real-time information like the current date and time.
-def Information():
-    current_date_time = datetime.datetime.now()
-    day = current_date_time.strftime("%A")
-    date = current_date_time.strftime("%d")
-    month = current_date_time.strftime("%B")
-    year = current_date_time.strftime("%Y")
-    hour = current_date_time.strftime("%H")
-    minute = current_date_time.strftime("%M")
-    second = current_date_time.strftime("%S")
-    data = (
-        f"Use This Real-time Information if needed:\n"
-        f"Day: {day}\n"
-        f"Date: {date}\n"
-        f"Month: {month}\n"
-        f"Year: {year}\n"
-        f"Time: {hour} hours, {minute} minutes, {second} seconds.\n"
-    )
-    return data
+# Removed Information() function as it's not used in the new conversation structure (Step 3)
 
-# Function to handle real-time search and response generation.
 def RealtimeSearchEngine(prompt):
-    global SystemChatBot, messages
+    global messages_log # Use the renamed chat log variable
 
-    # Load the chat log from the JSON file.
-    with open(r"Data\ChatLog.json", "r") as f:
-        messages = load(f)
+    # Load the latest chat log (optional, depends if you want context from previous turns)
+    # For strict adherence to Step 3 (fresh list each time), we don't load previous messages here.
+    # However, we still load it to *append* the current exchange for logging purposes later.
+    try:
+        with open(chatlog_path, "r") as f:
+            messages_log = load(f)
+    except FileNotFoundError:
+        messages_log = [] # Start fresh if log file is missing
 
-    # Append the user prompt to the messages.
-    messages.append({"role": "user", "content": prompt})
-    
-    # Limit the context to the last 5 messages.
-    recent_messages = messages[-5:]
+    # Perform search *before* building the conversation
+    search_data = PerformGoogleSearch(prompt)
 
-    # Add Google search results (from SerpAPI) to the system chatbot messages.
-    SystemChatBot.append({"role": "system", "content": PerformGoogleSearch(prompt)})
+    # --- Step 5: Handle No Search Results Gracefully ---
+    # Check for error messages or lack of relevant content from PerformGoogleSearch
+    if "Error:" in search_data or "No results found." in search_data or "No relevant information found" in search_data:
+         # Log the user prompt and the error/no result message
+        messages_log.append({"role": "user", "content": prompt})
+        no_result_message = "I could not find relevant information in the latest search results."
+        if "Error: SerpAPI key not found." in search_data:
+             no_result_message = "Search is unavailable due to a missing API key configuration."
+        elif "Error performing search:" in search_data:
+             no_result_message = "An error occurred while trying to fetch search results."
 
-    # Compose the full conversation with trimmed context.
-    full_conversation = SystemChatBot + [{"role": "system", "content": Information()}] + recent_messages
+        messages_log.append({"role": "assistant", "content": no_result_message})
+        with open(chatlog_path, "w") as f:
+            dump(messages_log, f, indent=4)
+        return no_result_message
 
-    # Generate a response using the Groq client.
-    completion = client.chat.completions.create(
-        model="llama3-70b-8192",
-        messages=full_conversation,
-        temperature=0.7,
-        max_tokens=2048,
-        top_p=1,
-        stream=True,
-    )
+    # --- Step 2: Change How You Add Search Results ---
+    search_message = {
+        "role": "user",
+        "content": f"Here are the latest search results for your query:\n{search_data}\n\nUsing ONLY this information, answer the following question: {prompt}"
+    }
 
-    Answer = ""
-    # Concatenate response chunks from the streaming output.
-    for chunk in completion:
-        if chunk.choices[0].delta.content:
-            Answer += chunk.choices[0].delta.content
+    # --- Step 3: Build a Fresh Message List for Each Query ---
+    conversation = [
+        {"role": "system", "content": System},
+        search_message
+        # Note: No history (`messages_log` or `recent_messages`) is included here as per Step 3
+        # Note: Information() call is removed as per Step 3's structure
+    ]
 
-    # Clean up the response.
-    Answer = Answer.strip().replace("</s>", "")
-    messages.append({"role": "assistant", "content": Answer})
+    try:
+        # --- Step 4: Update the Completion Call ---
+        completion = client.chat.completions.create(
+            model="llama3-70b-8192",
+            messages=conversation, # Use the new conversation list
+            temperature=0.7,
+            max_tokens=2048,
+            top_p=1,
+            stream=True,
+        )
 
-    # Save the updated chat log back to the JSON file.
-    with open(r"Data\ChatLog.json", "w") as f:
-        dump(messages, f, indent=4)
+        answer = ""
+        for chunk in completion:
+             # Check if delta content exists before accessing it
+            if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
+                answer += chunk.choices[0].delta.content
 
-    # Remove the most recent system message (the search result) from the conversation.
-    SystemChatBot.pop()
+        answer = answer.strip().replace("</s>", "") # Clean up potential end tokens
 
-    return AnswerModifier(Answer)
+        # Check if the model couldn't find the answer in the provided results
+        if not answer or "could not find the answer in the latest search results" in answer.lower():
+             answer = "I could not find the answer in the latest search results."
 
-# Main entry point of the program for interactive querying.
+    except Exception as e:
+        print(f"Error during Groq API call: {e}")
+        answer = "Sorry, I encountered an error while processing your request."
+
+    # Log the actual user prompt and the final answer
+    messages_log.append({"role": "user", "content": prompt})
+    messages_log.append({"role": "assistant", "content": answer})
+    with open(chatlog_path, "w") as f:
+        dump(messages_log, f, indent=4)
+
+    return AnswerModifier(answer)
+
 if __name__ == "__main__":
+    print(f"Starting {Assistantname}. Type 'exit', 'quit', or 'bye' to end.")
     while True:
-        prompt = input("Enter your query: ")
+        prompt = input(f"{Username}: ")
         if prompt.lower() in ['exit', 'quit', 'bye']:
-            print("Goodbye!")
+            print(f"{Assistantname}: Goodbye!")
             break
-        print(RealtimeSearchEngine(prompt))
+        response = RealtimeSearchEngine(prompt)
+        print(f"{Assistantname}: {response}")

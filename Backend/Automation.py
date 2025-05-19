@@ -8,6 +8,7 @@ and system-level controls via an async task scheduler.
 # --- Imports ---
 # Standard library
 import os
+import sys
 import subprocess
 import asyncio
 from pathlib import Path
@@ -15,7 +16,7 @@ import logging
 
 # Third-party
 from AppOpener import close, open as appopen
-from dotenv import dotenv_values
+from dotenv import load_dotenv
 from bs4 import BeautifulSoup
 from rich import print
 from groq import Groq
@@ -26,14 +27,25 @@ import keyboard
 # Local alias for browser
 from webbrowser import open as webopen
 
+# --- Helper for PyInstaller path resolution ---
+def resource_path(relative_path):
+    """Get absolute path to resource, works for dev and for PyInstaller"""
+    if hasattr(sys, '_MEIPASS'):
+        return os.path.join(sys._MEIPASS, relative_path)
+    return os.path.abspath(relative_path)
 
 # --- Configuration & Logging ---
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
-env = dotenv_values(".env")
-GroqAPIKey = env.get("GroqAPIKey")
+
+# Load environment variables from the correct path
+load_dotenv(dotenv_path=resource_path('.env'))
+
+# Get your keys using os.getenv
+GroqAPIKey = os.getenv("GroqAPIKey")
+Username = os.getenv("Username", "Assistant")
 
 # Ensure data directory exists for content files
-data_dir = Path("Data")
+data_dir = Path(resource_path("Data"))
 data_dir.mkdir(parents=True, exist_ok=True)
 
 # CSS classes for HTML parsing (Google search fallback)
@@ -50,13 +62,15 @@ USER_AGENT = (
 )
 
 # Initialize AI client
+if not GroqAPIKey:
+    raise ValueError("Groq API key not found in environment variables")
 groq_client = Groq(api_key=GroqAPIKey)
 
 # Chatbot context
 messages = []
 system_message = {
     "role": "system",
-    "content": f"Hello, I am {os.environ.get('Username', 'Assistant')}. You are a content writer."
+    "content": f"Hello, I am {Username}. You are a content writer."
 }
 
 # --- Helper Functions ---
@@ -66,7 +80,6 @@ def generate_and_save_content(topic: str) -> str:
     Generate AI content for a given topic, save to a text file, and open in Notepad.
     Returns a human-readable status message.
     """
-    # Clean topic
     clean_topic = topic.replace("Content ", "").strip()
     prompt = clean_topic
 
@@ -184,7 +197,6 @@ def handle_system_command(command: str) -> str:
         return f"Executed system command '{command}'."
     return f"Unknown system command '{command}'."
 
-
 # --- Async Command Translation & Execution ---
 
 async def translate_and_execute(commands: list[str]) -> list[str]:
@@ -223,7 +235,6 @@ async def translate_and_execute(commands: list[str]) -> list[str]:
             statuses.append(res)
     return statuses
 
-
 async def automate(commands: list[str]) -> list[str]:
     """
     High-level entry point: translate and execute commands, then return spoken responses.
@@ -231,7 +242,7 @@ async def automate(commands: list[str]) -> list[str]:
     responses = await translate_and_execute(commands)
     return responses
 
- # --- Testing Harness ---
+# --- Testing Harness ---
 # if __name__ == "__main__":
 #     # Example commands to test each feature of automation.py
 #     # NOTE: Avoid using "close notepad" here if your .txt handler opens VS Code
@@ -244,7 +255,7 @@ async def automate(commands: list[str]) -> list[str]:
 #         "system mute",            # Mutes volume
 #         # "close notepad"         # Uncomment to test closing Notepad (may close VS Code on some systems)
 #     ]
-
+#
 #     # Execute automation and print status messages
 #     import asyncio
 #     results = asyncio.run(automate(test_commands))

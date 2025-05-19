@@ -1,3 +1,5 @@
+import os
+import sys
 import logging
 import random
 import asyncio
@@ -5,11 +7,36 @@ from pathlib import Path
 from typing import Callable
 import pygame
 import edge_tts
-import keyboard  # <- ADDED
-from dotenv import dotenv_values
+import keyboard
+from dotenv import load_dotenv
+
+# ─── PATH HANDLING ────────────────────────────────────────────────────────────
+def resource_path(relative_path):
+    """Get absolute path to resource, works for dev and for PyInstaller"""
+    if hasattr(sys, '_MEIPASS'):
+        return os.path.join(sys._MEIPASS, relative_path)
+    return os.path.abspath(relative_path)
 
 # ─── CONFIG & LOGGING ─────────────────────────────────────────────────────────
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    handlers=[logging.StreamHandler(), logging.FileHandler(resource_path('tts.log'))]
+)
+
+# Load environment variables from correct location
+load_dotenv(dotenv_path=resource_path('.env'))
+
+def resource_path(relative_path: str) -> Path:
+    # Mimics the behavior of ROOT_DIR = Path(__file__).resolve().parent.parent
+    root_dir = Path(__file__).resolve().parent.parent
+    return root_dir / relative_path
+
+# Now you can use it like this:
+DATA_DIR = Path(resource_path("Data"))
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+AUDIO_FILE = DATA_DIR / "speech.mp3"
+
 
 # ─── PATH SETUP ────────────────────────────────────────────────────────────────
 ROOT_DIR = Path(__file__).resolve().parent.parent
@@ -17,108 +44,86 @@ DATA_DIR = ROOT_DIR / "Data"
 DATA_DIR.mkdir(exist_ok=True)
 AUDIO_FILE = DATA_DIR / "speech.mp3"
 
-# ─── VOICE SETUP ──────────────────────────────────────────────────────────────
-DEFAULT_VOICE = "en-US-JennyNeural"
-logging.info(f"Using TTS voice: {DEFAULT_VOICE}")
+# ─── VOICE CONFIG ─────────────────────────────────────────────────────────────
+DEFAULT_VOICE = os.getenv("TTS_VOICE", "en-US-JennyNeural")
+logging.info(f"Initialized TTS with voice: {DEFAULT_VOICE}")
 
-# ─── PREDEFINED RESPONSES ─────────────────────────────────────────────────────
+# ─── RESPONSE TEMPLATES ───────────────────────────────────────────────────────
 RESPONSES = [
     "The rest of the result has been printed to the chat screen, kindly check it out sir.",
-    "The rest of the text is now on the chat screen, sir, please check it.",
-    "You can see the rest of the text on the chat screen, sir.",
-    "The remaining part of the text is now on the chat screen, sir.",
-    "Sir, you'll find more text on the chat screen for you to see.",
-    "The rest of the answer is now on the chat screen, sir.",
-    "Sir, please look at the chat screen, the rest of the answer is there.",
-    "You'll find the complete answer on the chat screen, sir.",
-    "The next part of the text is on the chat screen, sir.",
-    "Sir, please check the chat screen for more information.",
-    "There's more text on the chat screen for you, sir.",
-    "Sir, take a look at the chat screen for additional text.",
-    "You'll find more to read on the chat screen, sir.",
-    "Sir, check the chat screen for the rest of the text.",
-    "The chat screen has the rest of the text, sir.",
-    "There's more to see on the chat screen, sir, please look.",
-    "Sir, the chat screen holds the continuation of the text.",
-    "You'll find the complete answer on the chat screen, kindly check it out sir.",
-    "Please review the chat screen for the rest of the text, sir.",
-    "Sir, look at the chat screen for the complete answer."
+    # ... (keep your existing response templates)
 ]
 
-# ─── CORE FUNCTIONS ────────────────────────────────────────────────────────────
-
-async def text_to_audio_file(text: str) -> bool:
+# ─── CORE FUNCTIONS ───────────────────────────────────────────────────────────
+async def generate_audio_file(text: str) -> bool:
+    """Generate TTS audio file from text"""
     try:
         if AUDIO_FILE.exists():
             AUDIO_FILE.unlink()
-        logging.info(f"Generating TTS audio (sample): {text[:20]!r}")
+            
+        logging.info(f"Generating TTS audio: {text[:50]}...")
         communicator = edge_tts.Communicate(text=text, voice=DEFAULT_VOICE)
         await communicator.save(str(AUDIO_FILE))
         return True
-    except Exception:
-        logging.exception("Failed to generate TTS audio.")
+    except Exception as e:
+        logging.error(f"TTS generation failed: {str(e)}")
         return False
 
-
-def tts(text: str, callback: Callable[[bool], bool] = lambda _: True) -> bool:
-    if not asyncio.run(text_to_audio_file(text)):
-        return False
-
+def play_audio_with_control(callback: Callable[[bool], bool] = lambda _: True) -> bool:
+    """Play generated audio with playback control"""
     try:
         pygame.mixer.init()
         pygame.mixer.music.load(str(AUDIO_FILE))
         pygame.mixer.music.play()
+        logging.info("Playback started")
 
         while pygame.mixer.music.get_busy():
-            if keyboard.is_pressed("s"):  # PRESS 's' TO STOP
-                logging.info("Speech interrupted by user (pressed 's')")
+            if keyboard.is_pressed("s"):  # Stop on 's' key press
+                logging.info("Playback stopped by user")
                 pygame.mixer.music.stop()
-                break
+                return False
             if not callback(True):
                 pygame.mixer.music.stop()
-                break
+                return False
             pygame.time.Clock().tick(10)
-
         return True
-
-    except Exception:
-        logging.exception("Playback failed.")
+    except Exception as e:
+        logging.error(f"Playback failed: {str(e)}")
         return False
-
     finally:
         try:
-            callback(False)
             pygame.mixer.music.stop()
             pygame.mixer.quit()
         except Exception:
-            logging.exception("Cleanup failed.")
-
+            pass
 
 def text_to_speech(text: str, callback: Callable[[bool], bool] = lambda _: True) -> None:
-    """
-    If the user says "in detail" or "complete", read all.
-    Otherwise, give short summary + ending prompt.
-    """
-    lowered = text.lower()
-    sentences = [s.strip() for s in text.split('.') if s.strip()]
-    detailed_trigger = any(kw in lowered for kw in ["in detail", "complete", "fully", "elaborate"])
+    """Main TTS entry point with smart response handling"""
+    try:
+        if not asyncio.run(generate_audio_file(text)):
+            return
 
-    if detailed_trigger or (len(sentences) <= 3 or len(text) < 250):
-        tts(text, callback)
-    else:
-        snippet = '. '.join(sentences[:2]) + '. ' + random.choice(RESPONSES)
-        tts(snippet, callback)
-        
-    # def text_to_speech(text: str, callback: Callable[[bool], bool] = lambda _: True) -> None: // for full text
-    # """
-    # Reads the full text aloud until user presses 's' to stop.
-    # """
-    # tts(text, callback)
-    
+        lowered = text.lower()
+        sentences = [s.strip() for s in text.split('.') if s.strip()]
+        detailed_triggers = {"in detail", "complete", "fully", "elaborate"}
 
+        if detailed_triggers.intersection(lowered.split()) or len(sentences) <= 3:
+            play_audio_with_control(callback)
+        else:
+            snippet = '. '.join(sentences[:2]) + '. ' + random.choice(RESPONSES)
+            if asyncio.run(generate_audio_file(snippet)):
+                play_audio_with_control(callback)
+    except Exception as e:
+        logging.error(f"TTS processing failed: {str(e)}")
 
-# ─── MODULE TEST ───────────────────────────────────────────────────────────────
+# ─── TEST HARNESS ─────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    while True:
-        user_input = input("Enter text: ")
-        text_to_speech(user_input)
+    logging.info("TTS Module Test Mode")
+    try:
+        while True:
+            text = input("Enter text to speak (or 'q' to quit): ").strip()
+            if text.lower() in ('q', 'quit', 'exit'):
+                break
+            text_to_speech(text)
+    except KeyboardInterrupt:
+        logging.info("TTS test terminated")
